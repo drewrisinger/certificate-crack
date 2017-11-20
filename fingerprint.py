@@ -67,7 +67,7 @@ def classify_key_list(key_list: list, mask_to_prob_dict: dict, group_names: list
     total_prob = np.array([])
     for key in key_list:
         if len(total_prob) is 0:
-            total_prob = classify_key(key)
+            total_prob = classify_key(key, mask_to_prob_dict, group_names)
         else:
             total_prob = total_prob * classify_key(key, mask_to_prob_dict, group_names)
 
