@@ -74,7 +74,7 @@ def classify_key_list(key_list: list, mask_to_prob_dict: dict, group_names: list
     # normalize probability vector (assuming numpy array)
     norm_prob = total_prob / np.linalg.norm(total_prob)
 
-    decided_group = get_likely_group_vector(norm_prob, group_names)
+    decided_group = get_likely_group_from_vector(norm_prob, group_names)
 
     # print("Note: Following probability can be incorrect if any key was 100% in one category.")
     # print("Classified the keys into: {0} with probability {1:02.1f}%".format(decided_group, [0][max_index] * 100))
@@ -82,11 +82,11 @@ def classify_key_list(key_list: list, mask_to_prob_dict: dict, group_names: list
     return norm_prob, decided_group
 
 
-def get_likely_group_vector(probability_vector: np.array, group_names: list) -> str:
+def get_likely_group_from_vector(probability_vector: np.array, group_names: list) -> str:
     max_index = np.argmax(probability_vector)  # find index of the maximum normalized probability
     return group_names[int(max_index)]
 
 
-def get_likely_group_key(key: int, mask_to_prob_dict: dict, group_names: list) -> str:
+def get_likely_group_from_key(key: int, mask_to_prob_dict: dict, group_names: list) -> str:
     vector = classify_key(key, mask_to_prob_dict, group_names)
-    return get_likely_group_vector(vector, group_names)
+    return get_likely_group_from_vector(vector, group_names)
