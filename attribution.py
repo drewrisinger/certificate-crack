@@ -2,6 +2,7 @@ import os
 import time
 from typing import List
 
+import numpy as np
 from cryptography import x509
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives.asymmetric.dsa import DSAPublicKey
@@ -78,6 +79,7 @@ pem_certs = get_certs_from_list(pem_files_list)
 num_rsa = 0
 num_dsa = 0
 num_per_group = [0] * len(groups)
+total_prob = np.zeros(len(groups))
 for c in pem_certs:
     pub_key = c.public_key()
     if isinstance(pub_key, DSAPublicKey):
@@ -87,9 +89,13 @@ for c in pem_certs:
         # todo: Maybe record probability and then normalize at end by number of keys?
         pub_mod = pub_key.public_numbers().n
         num_per_group[groups.index(fingerprint.get_likely_group_key(pub_mod, mask_prob_dict, groups))] += 1
+        total_prob += fingerprint.classify_key(pub_mod, mask_prob_dict, groups)
     else:
         raise ValueError
 
 print("Number of RSA certs = {0}. Number of DSA certs = {1}".format(num_rsa, num_dsa))
 print("Number of keys per group, assuming taking the most likely group per key:")
 print(num_per_group)
+
+norm_prob = total_prob / np.linalg.norm(total_prob)
+print(norm_prob)
