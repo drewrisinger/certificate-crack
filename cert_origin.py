@@ -3,10 +3,10 @@ import time
 from typing import List
 
 from cryptography import x509
-from cryptography.x509.oid import NameOID
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives.asymmetric.dsa import DSAPublicKey
 from cryptography.hazmat.primitives.asymmetric.rsa import RSAPublicKey
+from cryptography.x509.oid import NameOID
 
 import fingerprint
 
@@ -128,7 +128,7 @@ for c in pem_certs:
             duplicate.append(c)
             certs_with_key[pub_mod].append(c)
         # todo: Maybe record probability and then normalize at end by number of keys?
-        num_per_group[groups.index(fingerprint.get_likely_group_key(pub_mod, mask_prob_dict, groups))] += 1
+        num_per_group[groups.index(fingerprint.get_likely_group_from_key(pub_mod, mask_prob_dict, groups))] += 1
     else:
         raise ValueError
 

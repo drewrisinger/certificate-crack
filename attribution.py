@@ -71,7 +71,8 @@ for c in vuln_certs:
     elif isinstance(pub_key, RSAPublicKey):
         pub_mod = pub_key.public_numbers().n
         print(
-            "Key is probably from group: {0}".format(fingerprint.get_likely_group_key(pub_mod, mask_prob_dict, groups)))
+            "Key is probably from group: {0}".format(
+                fingerprint.get_likely_group_from_key(pub_mod, mask_prob_dict, groups)))
     else:
         raise ValueError
 
@@ -88,7 +89,7 @@ for c in pem_certs:
         num_rsa = num_rsa + 1
         # todo: Maybe record probability and then normalize at end by number of keys?
         pub_mod = pub_key.public_numbers().n
-        num_per_group[groups.index(fingerprint.get_likely_group_key(pub_mod, mask_prob_dict, groups))] += 1
+        num_per_group[groups.index(fingerprint.get_likely_group_from_key(pub_mod, mask_prob_dict, groups))] += 1
         total_prob += fingerprint.classify_key(pub_mod, mask_prob_dict, groups)
     else:
         raise ValueError
