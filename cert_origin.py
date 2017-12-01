@@ -154,8 +154,11 @@ with open('dupes.txt', 'w') as file:
         if len(certs_with_key[pub_mod]) > 1:
             certs_with_dup_keys += len(certs_with_key[pub_mod]) - 1
             for i in range(len(certs_with_key[pub_mod])):
-                file.write(certs_with_dup_keys[pub_mod][i].issuer.get_attributes_for_oid(getattr(NameOID, "COMMON_NAME"))[0].value)
-                file.write(" ")
+                file.write(
+                    certs_with_key[pub_mod][i].issuer.get_attributes_for_oid(getattr(NameOID, "COMMON_NAME"))[0].value)
+                file.write(
+                    certs_with_key[pub_mod][i].not_valid_after.strftime("%B %d, %Y"))
+                file.write(", ")
             file.write("\n")
 
 print("Certs with dup keys: ", certs_with_dup_keys)
