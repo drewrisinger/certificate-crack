@@ -4,6 +4,7 @@ from typing import List
 
 from cryptography import x509
 from cryptography.hazmat.backends import default_backend
+from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.dsa import DSAPublicKey
 from cryptography.hazmat.primitives.asymmetric.rsa import RSAPublicKey
 from cryptography.x509.oid import NameOID
@@ -85,6 +86,12 @@ print("Num of PEM files: " + str(len(pem_files_list)))
 
 
 def attribute_count(common_names: dict, cert, attribute: str) -> None:
+    """
+    This function parses certificates and updates a dictionary containing attribute values and their frequencies
+    :param common_names: dictionary containing attribute values
+    :param cert: certificate to be analyzed
+    :param attribute: attribute to be processed
+    """
     if cert.issuer.get_attributes_for_oid(getattr(NameOID, attribute))[0].value in common_names:
         common_names[cert.issuer.get_attributes_for_oid(getattr(NameOID, attribute))[0].value] += 1
     else:
@@ -106,14 +113,14 @@ certs_with_key = dict()
 for c in pem_certs:
     pub_key = c.public_key()
     # retrieving common name(issuer) for certs
-    if c.issuer.get_attributes_for_oid(NameOID.COMMON_NAME):
-        attribute_count(dict_common_name, c, "COMMON_NAME")
-    else:
-        certs_with_no_common_name += 1
-    if c.issuer.get_attributes_for_oid(NameOID.ORGANIZATION_NAME):
-        attribute_count(dict_org, c, "ORGANIZATION_NAME")
-    else:
-        certs_with_no_org_name += 1
+    # if c.issuer.get_attributes_for_oid(NameOID.COMMON_NAME):
+    #     attribute_count(dict_common_name, c, "COMMON_NAME")
+    # else:
+    #     certs_with_no_common_name += 1
+    # if c.issuer.get_attributes_for_oid(NameOID.ORGANIZATION_NAME):
+    #     attribute_count(dict_org, c, "ORGANIZATION_NAME")
+    # else:
+    #     certs_with_no_org_name += 1
     # counting no of RSA and DSA keys
     if isinstance(pub_key, DSAPublicKey):
         num_dsa = num_dsa + 1
@@ -129,6 +136,11 @@ for c in pem_certs:
             certs_with_key[pub_mod].append(c)
         # todo: Maybe record probability and then normalize at end by number of keys?
         num_per_group[groups.index(fingerprint.get_likely_group_from_key(pub_mod, mask_prob_dict, groups))] += 1
+        if fingerprint.classify_key(pub_mod, mask_prob_dict, groups)[3] == 100:
+            print(pub_key.public_bytes(
+                encoding=serialization.Encoding.PEM,
+                format=serialization.PublicFormat.SubjectPublicKeyInfo
+            ))
     else:
         raise ValueError
 
@@ -162,3 +174,5 @@ with open('dupes.txt', 'w') as file:
             file.write("\n")
 
 print("Certs with dup keys: ", certs_with_dup_keys)
+
+print(groups)
