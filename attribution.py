@@ -7,6 +7,7 @@ from cryptography import x509
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives.asymmetric.dsa import DSAPublicKey
 from cryptography.hazmat.primitives.asymmetric.rsa import RSAPublicKey
+from cryptography.x509.oid import NameOID
 
 import fingerprint
 
@@ -32,6 +33,8 @@ def get_certs_from_list(cert_filenames: List[str]):
 
 
 DATA_DIRECTORY = 'C:/Users/drewr/Documents/Graduate_Files/Classes/ENEE657/leaf_cert/'
+# DATA_DIRECTORY = '/home/slashzero/Downloads/leaf_cert/'
+
 
 # setup fingerprinting
 fingerprint_filename = r"./classiftable_20160716.csv"  # from https://crocs.fi.muni.cz/public/papers/usenix2016
@@ -71,8 +74,9 @@ for c in vuln_certs:
     elif isinstance(pub_key, RSAPublicKey):
         pub_mod = pub_key.public_numbers().n
         print(
-            "Key is probably from group: {0}".format(
-                fingerprint.get_likely_group_from_key(pub_mod, mask_prob_dict, groups)))
+            "Key is probably from group: {0}, issuer = {1}".format(
+                fingerprint.get_likely_group_from_key(pub_mod, mask_prob_dict, groups),
+                c.issuer.get_attributes_for_oid(getattr(NameOID, "ORGANIZATION_NAME"))[0].value))
     else:
         raise ValueError
 
