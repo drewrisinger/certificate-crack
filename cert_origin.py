@@ -1,7 +1,8 @@
 import os
 import time
+from datetime import timedelta
 from itertools import combinations
-from typing import List
+from typing import List, Tuple
 
 from cryptography import x509
 from cryptography.hazmat.backends import default_backend
@@ -16,23 +17,72 @@ This program tries to analyse the certificates and gather useful data
 """
 
 
-def certificate_validity_overlap(certificate_a: x509.Certificate, certificate_b: x509.Certificate) -> bool:
+def certificate_validity_overlap(certificate_a: x509.Certificate, certificate_b: x509.Certificate) -> Tuple[
+    bool, timedelta]:
     """
     Checks if the validity periods of two x509 certificates overlaps
     :param certificate_a: x509 certificate to compare
     :param certificate_b: second x509 certificate to compare
     :return: True if the validity intervals for the certificates overlap, False otherwise
     """
-    cert_a_start_time, cert_a_end_time = certificate_a.not_valid_before, certificate_a.not_valid_after
-    cert_b_start_time, cert_b_end_time = certificate_b.not_valid_before, certificate_b.not_valid_after
+    cert_a_start_time, cert_a_end_time = certificate_a.not_valid_before.date(), certificate_a.not_valid_after.date()
+    cert_b_start_time, cert_b_end_time = certificate_b.not_valid_before.date(), certificate_b.not_valid_after.date()
 
     # check if b's start time falls in a's interval
     if cert_a_start_time < cert_b_start_time < cert_a_end_time:
-        return True
+        return True, certificate_a.not_valid_after - certificate_b.not_valid_before
     elif cert_a_start_time < cert_b_end_time < cert_a_end_time:
-        return True
+        return True, certificate_b.not_valid_after - certificate_a.not_valid_before
     else:
-        return False
+        return False, timedelta(0)
+
+
+def same_issuer(certificate_a: x509.Certificate, certificate_b: x509.Certificate) -> bool:
+    """
+    Compares issuers to see if they are the same. Checks all attributes except serial number.
+    :param certificate_a: an x509 certificate
+    :param certificate_b: a second x509 certificate
+    :return: boolean
+    """
+    assert isinstance(certificate_b, x509.Certificate)
+    assert isinstance(certificate_a, x509.Certificate)
+
+    issuer_a_rdns_list = certificate_a.issuer.rdns
+    issuer_b_rdns_list = certificate_b.issuer.rdns
+
+    for rdns_a in issuer_a_rdns_list:
+        for name_attr_a in rdns_a:
+            for rdns_b in issuer_b_rdns_list:
+                for name_attr_b in rdns_b:
+                    assert isinstance(name_attr_a, x509.NameAttribute)
+                    assert isinstance(name_attr_b, x509.NameAttribute)
+                    # if OID matches, compare their values
+                    if name_attr_a.oid == name_attr_b.oid and name_attr_a.value != name_attr_b.value:
+                        return False
+
+    return True
+
+
+def get_certificates_different_attributes(certificate_a: x509.Certificate, certificate_b: x509.Certificate) -> List[
+    x509.NameAttribute]:
+    """
+    Returns any attributes different between two certificates
+    :param certificate_a:
+    :param certificate_b:
+    :return:
+    """
+    ret_list = list()
+    for rdns_a in certificate_a.issuer.rdns:
+        for name_attr_a in rdns_a:
+            for rdns_b in certificate_b.issuer.rdns:
+                for name_attr_b in rdns_b:
+                    assert isinstance(name_attr_a, x509.NameAttribute)
+                    assert isinstance(name_attr_b, x509.NameAttribute)
+                    # if OID matches, compare their values
+                    if name_attr_a.oid == name_attr_b.oid and name_attr_a.value != name_attr_b.value:
+                        ret_list.append((name_attr_a, name_attr_b))
+
+    return ret_list
 
 
 def get_certs_from_list(cert_filenames: List[str]):
@@ -54,7 +104,7 @@ def get_certs_from_list(cert_filenames: List[str]):
     return certs_list
 
 
-def attribute_count(common_names: dict, cert, attribute: str) -> None:
+def attribute_count(common_names: dict, cert: x509.Certificate, attribute: str) -> None:
     """
     This function parses certificates and updates a dictionary containing attribute values and their frequencies
     :param common_names: dictionary containing attribute values
@@ -66,20 +116,6 @@ def attribute_count(common_names: dict, cert, attribute: str) -> None:
     else:
         common_names[cert.issuer.get_attributes_for_oid(getattr(NameOID, attribute))[0].value] = 1
 
-
-# DATA_DIRECTORY = 'C:/Users/drewr/Documents/Graduate_Files/Classes/ENEE657/leaf_cert/'
-# DATA_DIRECTORY = '/home/slashzero/Downloads/leaf_cert/'
-
-# setup fingerprinting
-
-# # test reading just one certificate
-# with open(test_file, 'rb') as f:
-#     cert = x509.load_pem_x509_certificate(f.read(), default_backend())
-#
-# for attribute in cert.issuer:
-#     print(attribute)
-#
-# print(cert.issuer.get_attributes_for_oid(NameOID.COMMON_NAME)[0].value)
 
 # generate list of all PEM files in directory
 def gen_pem_files_list(data_directory):
@@ -155,21 +191,19 @@ def create_key_to_cert_list(pem_certs, mask_prob_dict, groups):
 
 
 def main():
-    DATA_DIRECTORY = '/home/slashzero/Downloads/leaf_cert/'
+    # DATA_DIRECTORY = '/home/slashzero/Downloads/leaf_cert/'
+    DATA_DIRECTORY = '../leaf_cert/'
     fingerprint_filename = r"./classiftable_20160716.csv"  # from https://crocs.fi.muni.cz/public/papers/usenix2016
     mask_prob_dict, groups = fingerprint.read_fingerprint_table(fingerprint_filename)
     pem_files_list = gen_pem_files_list(DATA_DIRECTORY)
     pem_certs = get_certs_from_list(pem_files_list)
     key_to_certificate_dict, num_rsa_keys, num_dsa_keys, unique_keys, duplicate_keys, num_certs_with_no_common_name, num_keys_in_each_group = create_key_to_cert_list(
         pem_certs, mask_prob_dict, groups)
-    test_fileget_attributes_for_oid = DATA_DIRECTORY + "00a0af20e171dc_1" + ".pem"
 
     print("Total number of certificates: {0}. ".format(len(pem_certs)))
     print("Number of DSA certs = {0}".format(num_dsa_keys))
-    print("Number of RSA certs = {0}. Number of unique certs: {1}. Number of duplicates: {2} ".format(num_rsa_keys,
-                                                                                                      len(unique_keys),
-                                                                                                      len(
-                                                                                                          duplicate_keys)))
+    print("Number of RSA certs = {0}. Number of unique certs: {1}. Number of duplicates: {2} ".format(
+        num_rsa_keys, len(unique_keys), len(duplicate_keys)))
     print("Certificates with no common names: ", num_certs_with_no_common_name)
     print("Number of keys per group, assuming taking the most likely group per key:")
     print(num_keys_in_each_group)
@@ -219,19 +253,22 @@ def main():
                 assert isinstance(cert_b, x509.Certificate)
                 # for n in NameOID:
                 # check if issuer has changed
-                if cert_a.issuer is not cert_b.issuer:
-                    changes_list.append((cert_a, cert_b))
+                if not same_issuer(cert_a, cert_b):
+                    different_attributes = get_certificates_different_attributes(cert_a, cert_b)
+                    changes_list.append((cert_a, cert_b, different_attributes))
+                    num_changed_issuers += 1
 
-                # check if overlap between validity of certificates
-                if certificate_validity_overlap(cert_a, cert_b):
-                    validity_list.append((cert_a, cert_b))
+                # check if overlap between validity dates of certificates
+                is_overlap, overlap_time = certificate_validity_overlap(cert_a, cert_b)
+                if is_overlap:
+                    validity_list.append((cert_a, cert_b, overlap_time))
+                    num_overlap_validity += 1
 
             if len(changes_list) > 0:
                 changed_issuer_dict[pub_mod] = changes_list
-                num_changed_issuers += 1
+
             if len(validity_list) > 0:
                 validity_overlap_dict[pub_mod] = validity_list
-                num_overlap_validity += 1
 
     print("Found {0} changed issuers and {1} overlapping validity instances".format(num_changed_issuers,
                                                                                     num_overlap_validity))
