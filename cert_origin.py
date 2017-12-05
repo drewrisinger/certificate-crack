@@ -1,5 +1,6 @@
 import os
 import time
+from itertools import combinations
 from typing import List
 
 from cryptography import x509
@@ -49,7 +50,7 @@ def attribute_count(common_names: dict, cert, attribute: str) -> None:
 
 
 # DATA_DIRECTORY = 'C:/Users/drewr/Documents/Graduate_Files/Classes/ENEE657/leaf_cert/'
-#DATA_DIRECTORY = '/home/slashzero/Downloads/leaf_cert/'
+# DATA_DIRECTORY = '/home/slashzero/Downloads/leaf_cert/'
 
 # setup fingerprinting
 
@@ -88,7 +89,7 @@ def create_key_to_cert_list(pem_certs, mask_prob_dict, groups):
     unique_keys = []
     # dict_common_name = dict()
     # dict_org = dict()
-    # num_certs_with_no_common_name = 0
+    num_certs_with_no_common_name = 0
     # num_certs_with_no_org_name = 0
     key_to_certificate_dict = dict()  # dictionary linking between a public key modulus & the certificate object
     for certificate in pem_certs:
@@ -127,7 +128,8 @@ def create_key_to_cert_list(pem_certs, mask_prob_dict, groups):
             # ))
         else:
             raise ValueError
-    return key_to_certificate_dict, num_rsa_keys, num_dsa_keys, unique_keys, duplicate_keys, num_certs_with_no_common_name, num_keys_in_each_group
+    return key_to_certificate_dict, num_rsa_keys, num_dsa_keys, unique_keys, duplicate_keys, \
+           num_certs_with_no_common_name, num_keys_in_each_group
 
 
 def main():
@@ -212,7 +214,6 @@ def main():
 
     print("Found {0} changed issuers and {1} overlapping validity instances".format(num_changed_issuers,
                                                                                     num_overlap_validity))
-
 
 
 if __name__ == "__main__":
