@@ -102,3 +102,8 @@ ENV/
 
 # JetBrains dev environment
 .idea/
+fingerprinting.ipynb
+possible_vulnerable_files.txt
+pubKeyAnalysis.ipynb
+Temp/
+fingerprinting.ipynb
