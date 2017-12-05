@@ -4,14 +4,12 @@ from typing import List
 
 from cryptography import x509
 from cryptography.hazmat.backends import default_backend
-# from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.dsa import DSAPublicKey
 from cryptography.hazmat.primitives.asymmetric.rsa import RSAPublicKey
 from cryptography.x509.oid import NameOID
 
 import fingerprint
-
-# import pickle
 
 """
 This program tries to analyse the certificates and gather useful data
@@ -51,6 +49,7 @@ def attribute_count(common_names: dict, cert, attribute: str) -> None:
 
 
 # DATA_DIRECTORY = 'C:/Users/drewr/Documents/Graduate_Files/Classes/ENEE657/leaf_cert/'
+#DATA_DIRECTORY = '/home/slashzero/Downloads/leaf_cert/'
 
 # setup fingerprinting
 
@@ -181,6 +180,39 @@ def main():
 
     print("Certs with dup keys: ", certs_with_dup_keys)
     print(groups)
+
+    changed_issuer_dict = dict()
+    validity_overlap_dict = dict()
+    num_changed_issuers = 0
+    num_overlap_validity = 0
+    for pub_mod in key_to_certificate_dict:
+        if len(key_to_certificate_dict[pub_mod]) > 1:
+            current_cert_list = key_to_certificate_dict[pub_mod]
+            changes_list = list()
+            validity_list = list()
+            for cert_a, cert_b in combinations(current_cert_list, 2):
+                assert isinstance(cert_a, x509.Certificate)
+                assert isinstance(cert_b, x509.Certificate)
+                # for n in NameOID:
+                # check if issuer has changed
+                if cert_a.issuer is not cert_b.issuer:
+                    changes_list.append((cert_a, cert_b))
+
+                # check if overlap between validity of certificates
+                if (cert_a.not_valid_before < cert_b.not_valid_after) or \
+                        (cert_b.not_valid_before < cert_a.not_valid_before):
+                    validity_list.append((cert_a, cert_b))
+
+            if len(changes_list) > 0:
+                changed_issuer_dict[pub_mod] = changes_list
+                num_changed_issuers += 1
+            if len(validity_list) > 0:
+                validity_overlap_dict[pub_mod] = validity_list
+                num_overlap_validity += 1
+
+    print("Found {0} changed issuers and {1} overlapping validity instances".format(num_changed_issuers,
+                                                                                    num_overlap_validity))
+
 
 
 if __name__ == "__main__":
