@@ -160,8 +160,8 @@ def main():
     mask_prob_dict, groups = fingerprint.read_fingerprint_table(fingerprint_filename)
     pem_files_list = gen_pem_files_list(DATA_DIRECTORY)
     pem_certs = get_certs_from_list(pem_files_list)
-    key_to_certificate_dict, num_rsa_keys, num_dsa_keys, unique_keys, duplicate_keys, num_certs_with_no_common_name, num_keys_in_each_group = create_key_to_cert_list(
-        pem_certs, mask_prob_dict, groups)
+    key_to_certificate_dict, num_rsa_keys, num_dsa_keys, unique_keys, duplicate_keys, num_certs_with_no_common_name, \
+    num_keys_in_each_group = create_key_to_cert_list(pem_certs, mask_prob_dict, groups)
     test_fileget_attributes_for_oid = DATA_DIRECTORY + "00a0af20e171dc_1" + ".pem"
 
     print("Total number of certificates: {0}. ".format(len(pem_certs)))
