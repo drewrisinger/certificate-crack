@@ -15,4 +15,4 @@ for row in data:
         print(el)
         i += 1;
     row = list(filter(None, row))
-    print(data_processed)
+    # print(data_processed)
