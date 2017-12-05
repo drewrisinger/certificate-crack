@@ -5,6 +5,7 @@ from typing import List
 
 from cryptography import x509
 from cryptography.hazmat.backends import default_backend
+from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.dsa import DSAPublicKey
 from cryptography.hazmat.primitives.asymmetric.rsa import RSAPublicKey
 from cryptography.x509.oid import NameOID
@@ -48,8 +49,8 @@ def attribute_count(common_names: dict, cert, attribute: str) -> None:
         common_names[cert.issuer.get_attributes_for_oid(getattr(NameOID, attribute))[0].value] = 1
 
 
-DATA_DIRECTORY = 'C:/Users/drewr/Documents/Graduate_Files/Classes/ENEE657/leaf_cert/'
-# DATA_DIRECTORY = '/home/slashzero/Downloads/leaf_cert/'
+# DATA_DIRECTORY = 'C:/Users/drewr/Documents/Graduate_Files/Classes/ENEE657/leaf_cert/'
+DATA_DIRECTORY = '/home/slashzero/Downloads/leaf_cert/'
 
 # setup fingerprinting
 fingerprint_filename = r"./classiftable_20160716.csv"  # from https://crocs.fi.muni.cz/public/papers/usenix2016
@@ -84,15 +85,15 @@ for certificate in pem_certs:
     pub_key = certificate.public_key()
 
     # retrieve common name(issuer) for certs
-    # if certificate.issuer.get_attributes_for_oid(NameOID.COMMON_NAME):
-    #     attribute_count(dict_common_name, certificate, "COMMON_NAME")
-    # else:
-    #     num_certs_with_no_common_name += 1
-    #
-    # if certificate.issuer.get_attributes_for_oid(NameOID.ORGANIZATION_NAME):
-    #     attribute_count(dict_org, certificate, "ORGANIZATION_NAME")
-    # else:
-    #     num_certs_with_no_org_name += 1
+    if certificate.issuer.get_attributes_for_oid(NameOID.COMMON_NAME):
+        attribute_count(dict_common_name, certificate, "COMMON_NAME")
+    else:
+        num_certs_with_no_common_name += 1
+
+    if certificate.issuer.get_attributes_for_oid(NameOID.ORGANIZATION_NAME):
+        attribute_count(dict_org, certificate, "ORGANIZATION_NAME")
+    else:
+        num_certs_with_no_org_name += 1
 
     # count num of RSA and DSA keys
     if isinstance(pub_key, DSAPublicKey):
@@ -109,11 +110,11 @@ for certificate in pem_certs:
             key_to_certificate_dict[pub_mod].append(certificate)
         # todo: Maybe record probability and then normalize at end by number of keys?
         num_keys_in_each_group[groups.index(fingerprint.get_likely_group_from_key(pub_mod, mask_prob_dict, groups))] += 1
-        # if fingerprint.classify_key(pub_mod, mask_prob_dict, groups)[3] == 100:
-        #     print(pub_key.public_bytes(
-        #         encoding=serialization.Encoding.PEM,
-        #         format=serialization.PublicFormat.SubjectPublicKeyInfo
-        #     ))
+        if fingerprint.classify_key(pub_mod, mask_prob_dict, groups)[3] == 100:
+            print(pub_key.public_bytes(
+                encoding=serialization.Encoding.PEM,
+                format=serialization.PublicFormat.SubjectPublicKeyInfo
+            ))
     else:
         raise ValueError
 
@@ -126,25 +127,25 @@ print("Certificates with no common names: ", num_certs_with_no_common_name)
 print("Number of keys per group, assuming taking the most likely group per key:")
 print(num_keys_in_each_group)
 
-# with open('issuers.txt', 'w') as file:
-#     for key in sorted(dict_common_name, key=dict_common_name.get, reverse=True):
-#         file.write("{0}: {1}\n".format(key, dict_common_name[key]))
-#
-# with open('org.txt', 'w') as file:
-#     for key in sorted(dict_org, key=dict_org.get, reverse=True):
-#         file.write("{0}: {1}\n".format(key, dict_org[key]))
+with open('issuers.txt', 'w') as file:
+    for key in sorted(dict_common_name, key=dict_common_name.get, reverse=True):
+        file.write("{0}: {1}\n".format(key, dict_common_name[key]))
 
-# certs_with_dup_keys = 0
-# with open('dupes.txt', 'w') as file:
-#     for pub_mod in key_to_certificate_dict:
-#         if len(key_to_certificate_dict[pub_mod]) > 1:
-#             certs_with_dup_keys += len(key_to_certificate_dict[pub_mod]) - 1
-#             # for i in range(len(key_to_certificate_dict[pub_mod])):
-#             #     file.write(key_to_certificate_dict[pub_mod][i].issuer.get_attributes_for_oid(getattr(NameOID, "COMMON_NAME"))[0].value)
-#             #     file.write(", ")
-#             # file.write("\n")
-#
-# print("Certs with dup keys: ", certs_with_dup_keys)
+with open('org.txt', 'w') as file:
+    for key in sorted(dict_org, key=dict_org.get, reverse=True):
+        file.write("{0}: {1}\n".format(key, dict_org[key]))
+
+certs_with_dup_keys = 0
+with open('dupes.txt', 'w') as file:
+    for pub_mod in key_to_certificate_dict:
+        if len(key_to_certificate_dict[pub_mod]) > 1:
+            certs_with_dup_keys += len(key_to_certificate_dict[pub_mod]) - 1
+            for i in range(len(key_to_certificate_dict[pub_mod])):
+                file.write(certs_with_dup_keys[pub_mod][i].issuer.get_attributes_for_oid(getattr(NameOID, "COMMON_NAME"))[0].value)
+                file.write(", ")
+            file.write("\n")
+
+print("Certs with dup keys: ", certs_with_dup_keys)
 
 changed_issuer_dict = dict()
 validity_overlap_dict = dict()
