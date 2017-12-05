@@ -19,11 +19,14 @@
 - Fingerprint each company's keys
 - Fingerprint each CA's keys
     - NOTE: this could be invalid b/c we don't know the keys were generated with the same fingerprinting algorithms
+- Try to fingerprint all keys from same issuer or organization
 
-Weakness: Assumes the CA generates the key itself. If the company gives key (using arbitrary algorithm) to CA to certify,
-then don't know what method they used to generate.
+Weakness: Assumes the CA generates the key itself. If the company gives key (using arbitrary algorithm) to CA to 
+certify, then don't know what method they used to generate the key.
 
     
 ## Cryptographic Weaknesses
 - Examine RSA key that was bad
+    - From "CustomCert", seems malicious
 - Explain why using DSA keys is weak, but not particularly harmful
+    - Analyze origin
