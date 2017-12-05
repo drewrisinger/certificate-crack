@@ -5,7 +5,6 @@ from typing import List
 
 from cryptography import x509
 from cryptography.hazmat.backends import default_backend
-from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.dsa import DSAPublicKey
 from cryptography.hazmat.primitives.asymmetric.rsa import RSAPublicKey
 from cryptography.x509.oid import NameOID
@@ -15,6 +14,25 @@ import fingerprint
 """
 This program tries to analyse the certificates and gather useful data
 """
+
+
+def certificate_validity_overlap(certificate_a: x509.Certificate, certificate_b: x509.Certificate) -> bool:
+    """
+    Checks if the validity periods of two x509 certificates overlaps
+    :param certificate_a: x509 certificate to compare
+    :param certificate_b: second x509 certificate to compare
+    :return: True if the validity intervals for the certificates overlap, False otherwise
+    """
+    cert_a_start_time, cert_a_end_time = certificate_a.not_valid_before, certificate_a.not_valid_after
+    cert_b_start_time, cert_b_end_time = certificate_b.not_valid_before, certificate_b.not_valid_after
+
+    # check if b's start time falls in a's interval
+    if cert_a_start_time < cert_b_start_time < cert_a_end_time:
+        return True
+    elif cert_a_start_time < cert_b_end_time < cert_a_end_time:
+        return True
+    else:
+        return False
 
 
 def get_certs_from_list(cert_filenames: List[str]):
@@ -91,19 +109,23 @@ def create_key_to_cert_list(pem_certs, mask_prob_dict, groups):
     # dict_org = dict()
     num_certs_with_no_common_name = 0
     # num_certs_with_no_org_name = 0
+    dict_common_name = dict()
+    dict_org = dict()
+    num_certs_with_no_common_name = 0
+    num_certs_with_no_org_name = 0
     key_to_certificate_dict = dict()  # dictionary linking between a public key modulus & the certificate object
     for certificate in pem_certs:
         pub_key = certificate.public_key()
         # retrieve common name(issuer) for certs
-        # if certificate.issuer.get_attributes_for_oid(NameOID.COMMON_NAME):
-        #     attribute_count(dict_common_name, certificate, "COMMON_NAME")
-        # else:
-        #     num_certs_with_no_common_name += 1
-        #
-        # if certificate.issuer.get_attributes_for_oid(NameOID.ORGANIZATION_NAME):
-        #     attribute_count(dict_org, certificate, "ORGANIZATION_NAME")
-        # else:
-        #     num_certs_with_no_org_name += 1
+        if certificate.issuer.get_attributes_for_oid(NameOID.COMMON_NAME):
+            attribute_count(dict_common_name, certificate, "COMMON_NAME")
+        else:
+            num_certs_with_no_common_name += 1
+
+        if certificate.issuer.get_attributes_for_oid(NameOID.ORGANIZATION_NAME):
+            attribute_count(dict_org, certificate, "ORGANIZATION_NAME")
+        else:
+            num_certs_with_no_org_name += 1
 
         # count num of RSA and DSA keys
         if isinstance(pub_key, DSAPublicKey):
@@ -201,8 +223,7 @@ def main():
                     changes_list.append((cert_a, cert_b))
 
                 # check if overlap between validity of certificates
-                if (cert_a.not_valid_before < cert_b.not_valid_after) or \
-                        (cert_b.not_valid_before < cert_a.not_valid_before):
+                if certificate_validity_overlap(cert_a, cert_b):
                     validity_list.append((cert_a, cert_b))
 
             if len(changes_list) > 0:
