@@ -2,12 +2,14 @@
 
 ## Statistics
 - Issuers
-    - Gather data on who the top 10-15 issuers were
+    - Gather data on who the top 10-15 issuers (AND COMPANIES) were
     - Create graph
 - Duplicate Keys
     - Who are the issuers
     - Overlapping Validity
         - Who creates these keys. Does one CA generate these disproportionately?
+        - Histogram of overlaps
+        - Pie chart of issuers w/ overlapping validity
     - Changed issuer
         - What aspects of the issuer change?
         - Exclude issuers whose name changes minorly (i.e. 2009 vs 2010)

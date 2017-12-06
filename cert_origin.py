@@ -1,131 +1,22 @@
-import os
-import time
 from datetime import timedelta
 from itertools import combinations
-from typing import List, Tuple
+from typing import List
 
+import matplotlib.pyplot as plt
+import numpy as np
 from cryptography import x509
-from cryptography.hazmat.backends import default_backend
-from cryptography.hazmat.primitives.asymmetric.dsa import DSAPublicKey
-from cryptography.hazmat.primitives.asymmetric.rsa import RSAPublicKey
 from cryptography.x509.oid import NameOID
 
 import fingerprint
+from certificate_analysis import certificate_validity_overlap, are_certs_from_same_company, \
+    get_certs_from_list, gen_pem_files_list, create_key_to_cert_list
 
 """
 This program tries to analyse the certificates and gather useful data
 """
 
 
-def certificate_validity_overlap(certificate_a: x509.Certificate, certificate_b: x509.Certificate) -> Tuple[
-    bool, timedelta]:
-    """
-    Checks if the validity periods of two x509 certificates overlaps
-    :param certificate_a: x509 certificate to compare
-    :param certificate_b: second x509 certificate to compare
-    :return: True if the validity intervals for the certificates overlap, False otherwise
-    """
-    cert_a_start_time, cert_a_end_time = certificate_a.not_valid_before.date(), certificate_a.not_valid_after.date()
-    cert_b_start_time, cert_b_end_time = certificate_b.not_valid_before.date(), certificate_b.not_valid_after.date()
-
-    # check if b's start time falls in a's interval
-    if cert_a_start_time < cert_b_start_time < cert_a_end_time:
-        return True, certificate_a.not_valid_after - certificate_b.not_valid_before
-    elif cert_a_start_time < cert_b_end_time < cert_a_end_time:
-        return True, certificate_b.not_valid_after - certificate_a.not_valid_before
-    else:
-        return False, timedelta(0)
-
-
-def same_issuer(certificate_a: x509.Certificate, certificate_b: x509.Certificate) -> bool:
-    """
-    Compares issuers to see if they are the same. Checks all attributes except serial number.
-    :param certificate_a: an x509 certificate
-    :param certificate_b: a second x509 certificate
-    :return: boolean
-    """
-    assert isinstance(certificate_b, x509.Certificate)
-    assert isinstance(certificate_a, x509.Certificate)
-
-    issuer_a_rdns_list = certificate_a.issuer.rdns
-    issuer_b_rdns_list = certificate_b.issuer.rdns
-
-    for rdns_a in issuer_a_rdns_list:
-        for name_attr_a in rdns_a:
-            for rdns_b in issuer_b_rdns_list:
-                for name_attr_b in rdns_b:
-                    assert isinstance(name_attr_a, x509.NameAttribute)
-                    assert isinstance(name_attr_b, x509.NameAttribute)
-                    # if OID matches, compare their values
-                    if name_attr_a.oid == name_attr_b.oid and name_attr_a.value != name_attr_b.value:
-                        return False
-
-    return True
-
-
-def get_certificates_different_attributes(certificate_a: x509.Certificate, certificate_b: x509.Certificate) -> List[
-    x509.NameAttribute]:
-    """
-    Returns any attributes different between two certificates
-    :param certificate_a:
-    :param certificate_b:
-    :return:
-    """
-    ret_list = list()
-    for rdns_a in certificate_a.issuer.rdns:
-        for name_attr_a in rdns_a:
-            for rdns_b in certificate_b.issuer.rdns:
-                for name_attr_b in rdns_b:
-                    assert isinstance(name_attr_a, x509.NameAttribute)
-                    assert isinstance(name_attr_b, x509.NameAttribute)
-                    # if OID matches, compare their values
-                    if name_attr_a.oid == name_attr_b.oid and name_attr_a.value != name_attr_b.value:
-                        ret_list.append((name_attr_a, name_attr_b))
-
-    return ret_list
-
-
-def get_certs_from_list(cert_filenames: List[str]):
-    """Function to return a list of x509 certificates given a list of files
-    :param cert_filenames:
-    :return:
-    """
-    certs_list = list()
-    start_time = time.perf_counter()
-    for filename in cert_filenames:
-        with open(filename, 'rb') as f:
-            certs_list.append(x509.load_pem_x509_certificate(f.read(), default_backend()))
-        if len(certs_list) % 25000 == 0:
-            print("{0} x509 loaded in {1} seconds".format(str(len(certs_list)), str(time.perf_counter() - start_time)))
-
-    stop_time = time.perf_counter()
-    print("Certs loaded per second: " + str(len(certs_list) / (stop_time - start_time)))
-
-    return certs_list
-
-
-def attribute_count(common_names: dict, cert: x509.Certificate, attribute: str) -> None:
-    """
-    This function parses certificates and updates a dictionary containing attribute values and their frequencies
-    :param common_names: dictionary containing attribute values
-    :param cert: certificate to be analyzed
-    :param attribute: attribute to be processed
-    """
-    if cert.issuer.get_attributes_for_oid(getattr(NameOID, attribute))[0].value in common_names:
-        common_names[cert.issuer.get_attributes_for_oid(getattr(NameOID, attribute))[0].value] += 1
-    else:
-        common_names[cert.issuer.get_attributes_for_oid(getattr(NameOID, attribute))[0].value] = 1
-
-
 # generate list of all PEM files in directory
-def gen_pem_files_list(data_directory):
-    pem_files_list = list()
-    for file in os.listdir(data_directory):
-        if file.endswith(".pem"):
-            pem_files_list.append(data_directory + file)
-
-    print("Num of PEM files: " + str(len(pem_files_list)))
-    return pem_files_list
 
 
 # Get statistics about certificates in data set.
@@ -134,114 +25,74 @@ def gen_pem_files_list(data_directory):
 #   Issuer's name & organization
 #   Number of RSA & DSA keys
 
-def create_key_to_cert_list(pem_certs, mask_prob_dict, groups):
-    num_rsa_keys = 0
-    num_dsa_keys = 0
-    num_keys_in_each_group = [0] * len(groups)
-    seen_keys = set()
-    duplicate_keys = []
-    unique_keys = []
-    # dict_common_name = dict()
-    # dict_org = dict()
-    num_certs_with_no_common_name = 0
-    # num_certs_with_no_org_name = 0
-    dict_common_name = dict()
-    dict_org = dict()
-    num_certs_with_no_common_name = 0
-    num_certs_with_no_org_name = 0
-    key_to_certificate_dict = dict()  # dictionary linking between a public key modulus & the certificate object
-    for certificate in pem_certs:
-        pub_key = certificate.public_key()
-        # retrieve common name(issuer) for certs
-        if certificate.issuer.get_attributes_for_oid(NameOID.COMMON_NAME):
-            attribute_count(dict_common_name, certificate, "COMMON_NAME")
-        else:
-            num_certs_with_no_common_name += 1
-
-        if certificate.issuer.get_attributes_for_oid(NameOID.ORGANIZATION_NAME):
-            attribute_count(dict_org, certificate, "ORGANIZATION_NAME")
-        else:
-            num_certs_with_no_org_name += 1
-
-        # count num of RSA and DSA keys
-        if isinstance(pub_key, DSAPublicKey):
-            num_dsa_keys = num_dsa_keys + 1
-        elif isinstance(pub_key, RSAPublicKey):
-            num_rsa_keys = num_rsa_keys + 1
-            pub_mod = pub_key.public_numbers().n
-            if pub_mod not in seen_keys:
-                seen_keys.add(pub_mod)
-                unique_keys.append(certificate)
-                key_to_certificate_dict[pub_mod] = [certificate]
-            else:
-                duplicate_keys.append(certificate)
-                key_to_certificate_dict[pub_mod].append(certificate)
-            # todo: Maybe record probability and then normalize at end by number of keys?
-            num_keys_in_each_group[
-                groups.index(fingerprint.get_likely_group_from_key(pub_mod, mask_prob_dict, groups))] += 1
-            # if fingerprint.classify_key(pub_mod, mask_prob_dict, groups)[3] == 100:
-            # print(pub_key.public_bytes(
-            #     encoding=serialization.Encoding.PEM,
-            #     format=serialization.PublicFormat.SubjectPublicKeyInfo
-            # ))
-        else:
-            raise ValueError
-    return key_to_certificate_dict, num_rsa_keys, num_dsa_keys, unique_keys, duplicate_keys, \
-           num_certs_with_no_common_name, num_keys_in_each_group
-
 
 def main():
-    # DATA_DIRECTORY = '/home/slashzero/Downloads/leaf_cert/'
-    DATA_DIRECTORY = '../leaf_cert/'
+    DATA_DIRECTORY = 'C:/Users/drewr/Documents/Graduate_Files/Classes/ENEE657/leaf_cert/'
+    # DATA_DIRECTORY = '../leaf_cert/'
     fingerprint_filename = r"./classiftable_20160716.csv"  # from https://crocs.fi.muni.cz/public/papers/usenix2016
     mask_prob_dict, groups = fingerprint.read_fingerprint_table(fingerprint_filename)
     pem_files_list = gen_pem_files_list(DATA_DIRECTORY)
     pem_certs = get_certs_from_list(pem_files_list)
-    key_to_certificate_dict, num_rsa_keys, num_dsa_keys, unique_keys, duplicate_keys, num_certs_with_no_common_name, num_keys_in_each_group = create_key_to_cert_list(
+    key_to_certificate_dict, num_rsa_keys, num_dsa_keys, unique_keys, duplicate_keys, num_keys_in_each_group = create_key_to_cert_list(
         pem_certs, mask_prob_dict, groups)
+
+    # dict_org, num_certs_with_no_org_name = count_organization_names(pem_certs)
+    # dict_common_name, num_certs_with_no_common_name = count_common_names(pem_certs)
 
     print("Total number of certificates: {0}. ".format(len(pem_certs)))
     print("Number of DSA certs = {0}".format(num_dsa_keys))
     print("Number of RSA certs = {0}. Number of unique certs: {1}. Number of duplicates: {2} ".format(
         num_rsa_keys, len(unique_keys), len(duplicate_keys)))
-    print("Certificates with no common names: ", num_certs_with_no_common_name)
+    # print("Certificates with no common names: ", num_certs_with_no_common_name)
     print("Number of keys per group, assuming taking the most likely group per key:")
     print(num_keys_in_each_group)
 
-    # with open('issuers.txt', 'w') as file:
-    #     for key in sorted(dict_common_name, key=dict_common_name.get, reverse=True):
-    #         file.write("{0}: {1}\n".format(key, dict_common_name[key]))
-    #
-    # with open('org.txt', 'w') as file:
-    #     for key in sorted(dict_org, key=dict_org.get, reverse=True):
-    #         file.write("{0}: {1}\n".format(key, dict_org[key]))
+    num_certs_with_duplicate_keys = write_duplicate_keys(key_to_certificate_dict)
 
-    # dumping certs_with_key to file
-    # with open('certs_with_key.pickle', 'wb') as handle:
-    #     pickle.dump(certs_with_key, handle, protocol=pickle.HIGHEST_PROTOCOL)
+    print("Certs with dup keys: ", num_certs_with_duplicate_keys)
+    # print(groups)
 
-    certs_with_dup_keys = 0
-    with open('dupes.txt', 'w') as file:
-        for pub_mod in key_to_certificate_dict:
-            if len(key_to_certificate_dict[pub_mod]) > 1:
-                certs_with_dup_keys += len(key_to_certificate_dict[pub_mod]) - 1
-                for i in range(len(key_to_certificate_dict[pub_mod])):
-                    file.write(
-                        key_to_certificate_dict[pub_mod][i].issuer.get_attributes_for_oid(
-                            getattr(NameOID, "COMMON_NAME"))[
-                            0].value)
-                    file.write(
-                        key_to_certificate_dict[pub_mod][i].not_valid_after.strftime("%B %d %Y"))
-                    if i < (len(key_to_certificate_dict[pub_mod]) - 1):
-                        file.write(", ")
-                file.write("\n")
+    changed_subject_dict, validity_overlap_dict, num_changed_subjects, num_overlap_validity = find_certificate_company_changes(
+        key_to_certificate_dict, exclude_same_day=False)
 
-    print("Certs with dup keys: ", certs_with_dup_keys)
-    print(groups)
+    print("Found {0} changed issuers and {1} overlapping validity instances".format(num_changed_subjects,
+                                                                                    num_overlap_validity))
 
-    changed_issuer_dict = dict()
+    overlap_times_days = overlap_time_dict_to_timedelta_list(validity_overlap_dict)
+    overlap_times = overlap_time_dict_to_timedelta_list(validity_overlap_dict, False)
+
+    seconds_to_days = 1 / (24 * 60 * 60)
+    min_overlap, max_overlap = min(overlap_times), max(overlap_times)
+    overlap_std = np.std(overlap_times)
+    overlap_mean = np.mean(overlap_times)
+    bin_spacing = np.logspace(np.log10(min_overlap), np.log10(max_overlap), num=15)
+    plt.hist(overlap_times, bins=bin_spacing)
+    plt.xlabel('Time (seconds) of certificate overlap (log)')
+    plt.ylabel('Number of overlapping elements')
+    plt.title('Histogram of duplicate certificate validity overlap')
+    plt.gca().set_xscale("log")
+    plt.text(10 ** 3, 1300, r'$\mu={0:.2f}\ days,\ \sigma={1:.2f}\ days$'.format(overlap_mean * seconds_to_days,
+                                                                                 overlap_std * seconds_to_days))
+    plt.show()
+
+    min_overlap_days, max_overlap_days = min(overlap_times_days), max(overlap_times_days)
+    overlap_days_std = np.std(overlap_times_days)
+    overlap_days_mean = np.mean(overlap_times_days)
+    # bin_spacing = np.logspace(np.log10(min_overlap_days), np.log10(max_overlap_days), num=15)
+    plt.hist(overlap_times_days, bins=20)
+    plt.xlabel('Time (days) of certificate overlap')
+    plt.ylabel('Number of overlapping elements')
+    plt.title('Histogram of duplicate certificate validity overlap')
+    plt.text(600, 1200, r'$\mu={0:.2f}\ days,\ \sigma={1:.2f}\ days$'.format(overlap_days_mean, overlap_days_std))
+    plt.show()
+
+    print("DONE")
+
+
+def find_certificate_company_changes(key_to_certificate_dict, exclude_same_day=True):
+    changed_subject_dict = dict()
     validity_overlap_dict = dict()
-    num_changed_issuers = 0
+    num_changed_subjects = 0
     num_overlap_validity = 0
     for pub_mod in key_to_certificate_dict:
         if len(key_to_certificate_dict[pub_mod]) > 1:
@@ -251,27 +102,85 @@ def main():
             for cert_a, cert_b in combinations(current_cert_list, 2):
                 assert isinstance(cert_a, x509.Certificate)
                 assert isinstance(cert_b, x509.Certificate)
-                # for n in NameOID:
-                # check if issuer has changed
-                if not same_issuer(cert_a, cert_b):
-                    different_attributes = get_certificates_different_attributes(cert_a, cert_b)
-                    changes_list.append((cert_a, cert_b, different_attributes))
-                    num_changed_issuers += 1
+
+                # check if company has changed
+                companies_are_same, difference_list = are_certs_from_same_company(cert_a, cert_b)
+                if not companies_are_same:
+                    changes_list.append((cert_a, cert_b, difference_list))
+                    num_changed_subjects += 1
 
                 # check if overlap between validity dates of certificates
-                is_overlap, overlap_time = certificate_validity_overlap(cert_a, cert_b)
+                is_overlap, overlap_time = certificate_validity_overlap(cert_a, cert_b,
+                                                                        exclude_same_day=exclude_same_day)
                 if is_overlap:
                     validity_list.append((cert_a, cert_b, overlap_time))
                     num_overlap_validity += 1
 
             if len(changes_list) > 0:
-                changed_issuer_dict[pub_mod] = changes_list
+                changed_subject_dict[pub_mod] = changes_list
 
             if len(validity_list) > 0:
                 validity_overlap_dict[pub_mod] = validity_list
 
-    print("Found {0} changed issuers and {1} overlapping validity instances".format(num_changed_issuers,
-                                                                                    num_overlap_validity))
+    # print out validity overlap dict & changed companies dict
+    with open('validity_overlap.txt', 'w') as out_file:
+        for key in validity_overlap_dict:
+            for cert_a, cert_b, overlap in validity_overlap_dict[key]:
+                out_file.write("{0}-{1}: {2}\n".format(cert_a.serial_number, cert_b.serial_number, overlap))
+
+    with open('changed_subjects.txt', 'wb') as out_file:
+        for key in changed_subject_dict:
+            for cert_a, cert_b, changes in changed_subject_dict[key]:
+                try:
+                    out_file.write("{0}-{1}: ".format(cert_a.serial_number, cert_b.serial_number).encode('utf-8'))
+                    for change_tuple in changes:
+                        name_a, name_b = change_tuple
+                        assert isinstance(name_a, x509.NameAttribute)
+                        assert isinstance(name_b, x509.NameAttribute)
+                        assert isinstance(name_a.oid, x509.ObjectIdentifier)
+                        oid_name_str = repr(name_a.oid)
+                        oid_name_str = oid_name_str[oid_name_str.find("name=") + len("name="):oid_name_str.rfind(")")]
+                        out_file.write(
+                            "{0}: {1} -> {2}, ".format(oid_name_str, name_a.value, name_b.value).encode('utf-8'))
+                    out_file.write("\n".encode('utf-8'))
+                except UnicodeEncodeError:
+                    out_file.write("{0}-{1}: ERROR. Changes has non-valid character".encode('utf-8'))
+
+    return changed_subject_dict, validity_overlap_dict, num_changed_subjects, num_overlap_validity
+
+
+def write_duplicate_keys(key_to_certificate_dict):
+    certs_with_dup_keys = 0
+    with open('dupes.txt', 'wb') as file:
+        for pub_mod in key_to_certificate_dict:
+            if len(key_to_certificate_dict[pub_mod]) > 1:
+                certs_with_dup_keys += len(key_to_certificate_dict[pub_mod]) - 1
+                for i in range(len(key_to_certificate_dict[pub_mod])):
+                    try:
+                        file.write(
+                            key_to_certificate_dict[pub_mod][i].issuer.get_attributes_for_oid(
+                                getattr(NameOID, "COMMON_NAME"))[0].value.encode('utf-8'))
+                        file.write(
+                            key_to_certificate_dict[pub_mod][i].not_valid_after.strftime("%B %d %Y").encode('utf-8'))
+                    except UnicodeEncodeError:
+                        print("Still encountered unicode error")
+                    if i < (len(key_to_certificate_dict[pub_mod]) - 1):
+                        file.write(", ".encode('utf-8'))
+                file.write("\n".encode('utf-8'))
+    return certs_with_dup_keys
+
+
+def overlap_time_dict_to_timedelta_list(valid_overlap_dict, use_days=True) -> List[timedelta]:
+    overlap_timedeltas = list()
+    for key in valid_overlap_dict:
+        for _, _, overlap in valid_overlap_dict[key]:
+            assert isinstance(overlap, timedelta)
+            if use_days:
+                overlap_timedeltas.append(overlap.days)
+            else:
+                overlap_timedeltas.append(overlap.total_seconds())
+
+    return overlap_timedeltas
 
 
 if __name__ == "__main__":

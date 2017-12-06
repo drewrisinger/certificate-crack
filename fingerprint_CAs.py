@@ -2,7 +2,7 @@ from cryptography.hazmat.primitives.asymmetric.rsa import RSAPublicKey
 from cryptography.x509.oid import NameOID
 
 import fingerprint
-from cert_origin import gen_pem_files_list, get_certs_from_list
+from certificate_analysis import get_certs_from_list, gen_pem_files_list
 
 
 def create_issuer_to_cert_list(pem_certs, mask_prob_dict, groups):

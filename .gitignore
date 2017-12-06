@@ -107,3 +107,6 @@ possible_vulnerable_files.txt
 pubKeyAnalysis.ipynb
 Temp/
 fingerprinting.ipynb
+changed_subjects.txt
+dupes.txt
+validity_overlap.txt
