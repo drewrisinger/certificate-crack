@@ -35,4 +35,4 @@ common_name_to_modulus = create_issuer_to_cert_list(pem_certs, mask_prob_dict, g
 
 for CA in common_name_to_modulus:
     norm_prob, group = fingerprint.classify_key_list(common_name_to_modulus[CA], mask_prob_dict, groups)
-    print(norm_prob[group - 1])
+    print(str(max(norm_prob)) + ", " + str(group))
