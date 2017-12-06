@@ -14,16 +14,22 @@ from us import states
 import fingerprint
 
 
-def certificate_validity_overlap(certificate_a: x509.Certificate, certificate_b: x509.Certificate) -> \
+def certificate_validity_overlap(certificate_a: x509.Certificate, certificate_b: x509.Certificate,
+                                 exclude_same_day=True) -> \
         Tuple[bool, timedelta]:
     """
     Checks if the validity periods of two x509 certificates overlaps
     :param certificate_a: x509 certificate to compare
     :param certificate_b: second x509 certificate to compare
+    :param exclude_same_day: if allowed to overlap on same day. Defaults to False
     :return: True if the validity intervals for the certificates overlap, False otherwise
     """
-    cert_a_start_time, cert_a_end_time = certificate_a.not_valid_before.date(), certificate_a.not_valid_after.date()
-    cert_b_start_time, cert_b_end_time = certificate_b.not_valid_before.date(), certificate_b.not_valid_after.date()
+    if exclude_same_day:
+        cert_a_start_time, cert_a_end_time = certificate_a.not_valid_before.date(), certificate_a.not_valid_after.date()
+        cert_b_start_time, cert_b_end_time = certificate_b.not_valid_before.date(), certificate_b.not_valid_after.date()
+    else:
+        cert_a_start_time, cert_a_end_time = certificate_a.not_valid_before, certificate_a.not_valid_after
+        cert_b_start_time, cert_b_end_time = certificate_b.not_valid_before, certificate_b.not_valid_after
 
     # check if b's start time falls in a's interval
     if cert_a_start_time < cert_b_start_time < cert_a_end_time:

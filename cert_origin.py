@@ -2,9 +2,10 @@ from datetime import timedelta
 from itertools import combinations
 from typing import List
 
+import matplotlib.pyplot as plt
+import numpy as np
 from cryptography import x509
 from cryptography.x509.oid import NameOID
-from matplotlib import pyplot
 
 import fingerprint
 from certificate_analysis import certificate_validity_overlap, are_certs_from_same_company, \
@@ -52,19 +53,43 @@ def main():
     # print(groups)
 
     changed_subject_dict, validity_overlap_dict, num_changed_subjects, num_overlap_validity = find_certificate_company_changes(
-        key_to_certificate_dict)
+        key_to_certificate_dict, exclude_same_day=False)
 
     print("Found {0} changed issuers and {1} overlapping validity instances".format(num_changed_subjects,
                                                                                     num_overlap_validity))
 
-    overlap_times = overlap_time_dict_to_timedelta_list(validity_overlap_dict)
+    overlap_times_days = overlap_time_dict_to_timedelta_list(validity_overlap_dict)
+    overlap_times = overlap_time_dict_to_timedelta_list(validity_overlap_dict, False)
 
-    pyplot.hist(overlap_times)
-    pyplot.show()
+    seconds_to_days = 1 / (24 * 60 * 60)
+    min_overlap, max_overlap = min(overlap_times), max(overlap_times)
+    overlap_std = np.std(overlap_times)
+    overlap_mean = np.mean(overlap_times)
+    bin_spacing = np.logspace(np.log10(min_overlap), np.log10(max_overlap), num=15)
+    plt.hist(overlap_times, bins=bin_spacing)
+    plt.xlabel('Time (seconds) of certificate overlap (log)')
+    plt.ylabel('Number of overlapping elements')
+    plt.title('Histogram of duplicate certificate validity overlap')
+    plt.gca().set_xscale("log")
+    plt.text(10 ** 3, 1300, r'$\mu={0:.2f}\ days,\ \sigma={1:.2f}\ days$'.format(overlap_mean * seconds_to_days,
+                                                                                 overlap_std * seconds_to_days))
+    plt.show()
+
+    min_overlap_days, max_overlap_days = min(overlap_times_days), max(overlap_times_days)
+    overlap_days_std = np.std(overlap_times_days)
+    overlap_days_mean = np.mean(overlap_times_days)
+    # bin_spacing = np.logspace(np.log10(min_overlap_days), np.log10(max_overlap_days), num=15)
+    plt.hist(overlap_times_days, bins=20)
+    plt.xlabel('Time (days) of certificate overlap')
+    plt.ylabel('Number of overlapping elements')
+    plt.title('Histogram of duplicate certificate validity overlap')
+    plt.text(600, 1200, r'$\mu={0:.2f}\ days,\ \sigma={1:.2f}\ days$'.format(overlap_days_mean, overlap_days_std))
+    plt.show()
+
     print("DONE")
 
 
-def find_certificate_company_changes(key_to_certificate_dict):
+def find_certificate_company_changes(key_to_certificate_dict, exclude_same_day=True):
     changed_subject_dict = dict()
     validity_overlap_dict = dict()
     num_changed_subjects = 0
@@ -85,7 +110,8 @@ def find_certificate_company_changes(key_to_certificate_dict):
                     num_changed_subjects += 1
 
                 # check if overlap between validity dates of certificates
-                is_overlap, overlap_time = certificate_validity_overlap(cert_a, cert_b)
+                is_overlap, overlap_time = certificate_validity_overlap(cert_a, cert_b,
+                                                                        exclude_same_day=exclude_same_day)
                 if is_overlap:
                     validity_list.append((cert_a, cert_b, overlap_time))
                     num_overlap_validity += 1
@@ -106,8 +132,17 @@ def find_certificate_company_changes(key_to_certificate_dict):
         for key in changed_subject_dict:
             for cert_a, cert_b, changes in changed_subject_dict[key]:
                 try:
-                    out_file.write(
-                        "{0}-{1}: {2}\n".format(cert_a.serial_number, cert_b.serial_number, changes).encode('utf-8'))
+                    out_file.write("{0}-{1}: ".format(cert_a.serial_number, cert_b.serial_number).encode('utf-8'))
+                    for change_tuple in changes:
+                        name_a, name_b = change_tuple
+                        assert isinstance(name_a, x509.NameAttribute)
+                        assert isinstance(name_b, x509.NameAttribute)
+                        assert isinstance(name_a.oid, x509.ObjectIdentifier)
+                        oid_name_str = repr(name_a.oid)
+                        oid_name_str = oid_name_str[oid_name_str.find("name=") + len("name="):oid_name_str.rfind(")")]
+                        out_file.write(
+                            "{0}: {1} -> {2}, ".format(oid_name_str, name_a.value, name_b.value).encode('utf-8'))
+                    out_file.write("\n".encode('utf-8'))
                 except UnicodeEncodeError:
                     out_file.write("{0}-{1}: ERROR. Changes has non-valid character".encode('utf-8'))
 
@@ -135,12 +170,15 @@ def write_duplicate_keys(key_to_certificate_dict):
     return certs_with_dup_keys
 
 
-def overlap_time_dict_to_timedelta_list(valid_overlap_dict) -> List[timedelta]:
+def overlap_time_dict_to_timedelta_list(valid_overlap_dict, use_days=True) -> List[timedelta]:
     overlap_timedeltas = list()
     for key in valid_overlap_dict:
         for _, _, overlap in valid_overlap_dict[key]:
             assert isinstance(overlap, timedelta)
-            overlap_timedeltas.append(overlap.days)
+            if use_days:
+                overlap_timedeltas.append(overlap.days)
+            else:
+                overlap_timedeltas.append(overlap.total_seconds())
 
     return overlap_timedeltas
 
