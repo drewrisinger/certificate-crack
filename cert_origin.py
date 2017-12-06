@@ -5,7 +5,7 @@ from cryptography.x509.oid import NameOID
 
 import fingerprint
 from certificate_analysis import certificate_validity_overlap, are_certs_from_same_company, \
-    get_certificates_different_attributes, get_certs_from_list, gen_pem_files_list, create_key_to_cert_list
+    get_certs_from_list, gen_pem_files_list, create_key_to_cert_list
 
 """
 This program tries to analyse the certificates and gather useful data
@@ -57,28 +57,14 @@ def main():
     print("Certs with dup keys: ", certs_with_dup_keys)
     print(groups)
 
-    changed_subject_dict, validity_overlap_dict, num_changed_subjects, num_overlap_validity = find_certificate_changes(
+    changed_subject_dict, validity_overlap_dict, num_changed_subjects, num_overlap_validity = find_certificate_company_changes(
         key_to_certificate_dict)
-
-    # print out validity overlap dict & changed companies dict
-    with open('validity_overlap.txt', 'w') as out_file:
-        for key in validity_overlap_dict:
-            for cert_a, cert_b, overlap in validity_overlap_dict[key]:
-                out_file.write("{0}-{1}: {2}\n".format(cert_a.serial, cert_b.serial, overlap))
-
-    with open('changed_subjects.txt', 'w') as out_file:
-        for key in changed_subject_dict:
-            for cert_a, cert_b, changes in changed_subject_dict[key]:
-                try:
-                    out_file.write(u"{0}-{1}: {2}\n".format(cert_a.serial, cert_b.serial, changes))
-                except UnicodeEncodeError:
-                    out_file.write(u"{0}-{1}: ERROR. Changes has non-valid character")
 
     print("Found {0} changed issuers and {1} overlapping validity instances".format(num_changed_subjects,
                                                                                     num_overlap_validity))
 
 
-def find_certificate_changes(key_to_certificate_dict):
+def find_certificate_company_changes(key_to_certificate_dict):
     changed_subject_dict = dict()
     validity_overlap_dict = dict()
     num_changed_subjects = 0
@@ -93,9 +79,9 @@ def find_certificate_changes(key_to_certificate_dict):
                 assert isinstance(cert_b, x509.Certificate)
 
                 # check if company has changed
-                if not are_certs_from_same_company(cert_a, cert_b):
-                    different_attributes = get_certificates_different_attributes(cert_a, cert_b)
-                    changes_list.append((cert_a, cert_b, different_attributes))
+                companies_are_different, difference_list = are_certs_from_same_company(cert_a, cert_b)
+                if companies_are_different:
+                    changes_list.append((cert_a, cert_b, difference_list))
                     num_changed_subjects += 1
 
                 # check if overlap between validity dates of certificates
@@ -109,24 +95,42 @@ def find_certificate_changes(key_to_certificate_dict):
 
             if len(validity_list) > 0:
                 validity_overlap_dict[pub_mod] = validity_list
+
+    # print out validity overlap dict & changed companies dict
+    with open('validity_overlap.txt', 'w') as out_file:
+        for key in validity_overlap_dict:
+            for cert_a, cert_b, overlap in validity_overlap_dict[key]:
+                out_file.write("{0}-{1}: {2}\n".format(cert_a.serial, cert_b.serial, overlap))
+
+    with open('changed_subjects.txt', 'wb') as out_file:
+        for key in changed_subject_dict:
+            for cert_a, cert_b, changes in changed_subject_dict[key]:
+                try:
+                    out_file.write("{0}-{1}: {2}\n".format(cert_a.serial, cert_b.serial, changes).encode('utf-8'))
+                except UnicodeEncodeError:
+                    out_file.write("{0}-{1}: ERROR. Changes has non-valid character".encode('utf-8'))
+
     return changed_subject_dict, validity_overlap_dict, num_changed_subjects, num_overlap_validity
 
 
 def write_duplicate_keys(key_to_certificate_dict):
     certs_with_dup_keys = 0
-    with open('dupes.txt', 'w') as file:
+    with open('dupes.txt', 'wb') as file:
         for pub_mod in key_to_certificate_dict:
             if len(key_to_certificate_dict[pub_mod]) > 1:
                 certs_with_dup_keys += len(key_to_certificate_dict[pub_mod]) - 1
                 for i in range(len(key_to_certificate_dict[pub_mod])):
-                    file.write(
-                        key_to_certificate_dict[pub_mod][i].issuer.get_attributes_for_oid(
-                            getattr(NameOID, "COMMON_NAME"))[0].value)
-                    file.write(
-                        key_to_certificate_dict[pub_mod][i].not_valid_after.strftime("%B %d %Y"))
+                    try:
+                        file.write(
+                            key_to_certificate_dict[pub_mod][i].issuer.get_attributes_for_oid(
+                                getattr(NameOID, "COMMON_NAME"))[0].value.encode('utf-8'))
+                        file.write(
+                            key_to_certificate_dict[pub_mod][i].not_valid_after.strftime("%B %d %Y").encode('utf-8'))
+                    except UnicodeEncodeError:
+                        print("Still encountered unicode error")
                     if i < (len(key_to_certificate_dict[pub_mod]) - 1):
-                        file.write(", ")
-                file.write("\n")
+                        file.write(", ".encode('utf-8'))
+                file.write("\n".encode('utf-8'))
     return certs_with_dup_keys
 
 

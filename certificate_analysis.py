@@ -8,6 +8,7 @@ from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives.asymmetric.dsa import DSAPublicKey
 from cryptography.hazmat.primitives.asymmetric.rsa import RSAPublicKey
 from cryptography.x509 import NameOID
+from fuzzywuzzy import fuzz
 
 import fingerprint
 
@@ -32,9 +33,10 @@ def certificate_validity_overlap(certificate_a: x509.Certificate, certificate_b:
         return False, timedelta(0)
 
 
-def are_certs_from_same_company(certificate_a: x509.Certificate, certificate_b: x509.Certificate) -> bool:
+def are_certs_from_same_company(certificate_a: x509.Certificate, certificate_b: x509.Certificate) \
+        -> Tuple[bool, List[x509.NameAttribute]]:
     """
-    Compares companies certs are assigned to see if they are the same. Checks all attributes except serial number.
+    Compares companies certs are assigned to see if they are the same. Checks all attributes.
     :param certificate_a: an x509 certificate
     :param certificate_b: a second x509 certificate
     :return: boolean
@@ -45,39 +47,49 @@ def are_certs_from_same_company(certificate_a: x509.Certificate, certificate_b: 
     subject_a_rdns_list = certificate_a.subject.rdns
     subject_b_rdns_list = certificate_b.subject.rdns
 
-    for rdns_a in subject_a_rdns_list:
-        for name_attr_a in rdns_a:
-            for rdns_b in subject_b_rdns_list:
-                for name_attr_b in rdns_b:
-                    assert isinstance(name_attr_a, x509.NameAttribute)
-                    assert isinstance(name_attr_b, x509.NameAttribute)
-                    # if OID matches, compare their values
-                    if name_attr_a.oid == name_attr_b.oid and name_attr_a.value != name_attr_b.value:
-                        return False
-
-    return True
+    return _is_rdns_match(subject_a_rdns_list, subject_b_rdns_list)
 
 
-def get_certificates_different_attributes(certificate_a: x509.Certificate, certificate_b: x509.Certificate) -> \
-        List[x509.NameAttribute]:
+def are_certs_from_same_issuer(certificate_a: x509.Certificate, certificate_b: x509.Certificate) \
+        -> Tuple[bool, List[x509.NameAttribute]]:
     """
-    Returns any attributes different between two certificates
-    :param certificate_a:
-    :param certificate_b:
+    Compares certificate issuers to see if they are the same. Checks all attributes.
+    :param certificate_a: an x509 certificate
+    :param certificate_b: a second x509 certificate
+    :return: boolean
+    """
+    assert isinstance(certificate_a, x509.Certificate)
+    assert isinstance(certificate_b, x509.Certificate)
+
+    issuer_a_rdns_list = certificate_a.issuer.rdns
+    issuer_b_rdns_list = certificate_b.issuer.rdns
+
+    return _is_rdns_match(issuer_a_rdns_list, issuer_b_rdns_list)
+
+
+def _is_rdns_match(rdns_list_a: List[x509.RelativeDistinguishedName], rdns_list_b: List[x509.RelativeDistinguishedName]) \
+        -> Tuple[bool, List[x509.NameAttribute]]:
+    """
+    Performs fuzzy search to check if two RDNS records are the same. Only checks if the record type exists in both
+    :param rdns_list_a:
+    :param rdns_list_b:
     :return:
     """
-    ret_list = list()
-    for rdns_a in certificate_a.subject.rdns:
+    retval = True  # default to assuming same
+    diff_list = list()
+    for rdns_a in rdns_list_a:
         for name_attr_a in rdns_a:
-            for rdns_b in certificate_b.subject.rdns:
+            for rdns_b in rdns_list_b:
                 for name_attr_b in rdns_b:
                     assert isinstance(name_attr_a, x509.NameAttribute)
                     assert isinstance(name_attr_b, x509.NameAttribute)
                     # if OID matches, compare their values
                     if name_attr_a.oid == name_attr_b.oid and name_attr_a.value != name_attr_b.value:
-                        ret_list.append((name_attr_a, name_attr_b))
-
-    return ret_list
+                        # does fuzzy search to check if there is < 80% match b/w values
+                        if fuzz.token_sort_ratio(name_attr_a.value, name_attr_b.value) < 80:
+                            retval = False
+                            diff_list.append((name_attr_a, name_attr_b))
+    return retval, diff_list
 
 
 def get_certs_from_list(cert_filenames: List[str]):
