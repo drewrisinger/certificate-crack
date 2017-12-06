@@ -9,6 +9,7 @@ from cryptography.hazmat.primitives.asymmetric.dsa import DSAPublicKey
 from cryptography.hazmat.primitives.asymmetric.rsa import RSAPublicKey
 from cryptography.x509 import NameOID
 from fuzzywuzzy import fuzz
+from us import states
 
 import fingerprint
 
@@ -86,10 +87,26 @@ def _is_rdns_match(rdns_list_a: List[x509.RelativeDistinguishedName], rdns_list_
                     # if OID matches, compare their values
                     if name_attr_a.oid == name_attr_b.oid and name_attr_a.value != name_attr_b.value:
                         # does fuzzy search to check if there is < 80% match b/w values
-                        if fuzz.token_sort_ratio(name_attr_a.value, name_attr_b.value) < 80:
+                        if fuzz.token_sort_ratio(name_attr_a.value, name_attr_b.value) < 80 and not \
+                                _special_case_nameattr_equivalence(name_attr_a, name_attr_b):
                             retval = False
                             diff_list.append((name_attr_a, name_attr_b))
     return retval, diff_list
+
+
+def _special_case_nameattr_equivalence(nameattr_a: x509.NameAttribute, nameattr_b: x509.NameAttribute):
+    """
+    Return true if the two name attributes are equivalent for some special case. Assumes both nameattr have same oid
+    :param nameattr_a:
+    :param nameattr_b:
+    :return:
+    """
+    # if is a US state, and state names are just long or short form (i.e. CA == California)
+    if nameattr_a.oid == NameOID.STATE_OR_PROVINCE_NAME and states.lookup(nameattr_a.value) == states.lookup(
+            nameattr_b.value):
+        return True
+    # add in more special cases here
+    return False
 
 
 def get_certs_from_list(cert_filenames: List[str]):
