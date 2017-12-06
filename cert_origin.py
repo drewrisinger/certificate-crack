@@ -1,7 +1,10 @@
+from datetime import timedelta
 from itertools import combinations
+from typing import List
 
 from cryptography import x509
 from cryptography.x509.oid import NameOID
+from matplotlib import pyplot
 
 import fingerprint
 from certificate_analysis import certificate_validity_overlap, are_certs_from_same_company, \
@@ -29,39 +32,36 @@ def main():
     mask_prob_dict, groups = fingerprint.read_fingerprint_table(fingerprint_filename)
     pem_files_list = gen_pem_files_list(DATA_DIRECTORY)
     pem_certs = get_certs_from_list(pem_files_list)
-    key_to_certificate_dict, num_rsa_keys, num_dsa_keys, unique_keys, duplicate_keys, num_certs_with_no_common_name, num_keys_in_each_group = create_key_to_cert_list(
+    key_to_certificate_dict, num_rsa_keys, num_dsa_keys, unique_keys, duplicate_keys, num_keys_in_each_group = create_key_to_cert_list(
         pem_certs, mask_prob_dict, groups)
+
+    # dict_org, num_certs_with_no_org_name = count_organization_names(pem_certs)
+    # dict_common_name, num_certs_with_no_common_name = count_common_names(pem_certs)
 
     print("Total number of certificates: {0}. ".format(len(pem_certs)))
     print("Number of DSA certs = {0}".format(num_dsa_keys))
     print("Number of RSA certs = {0}. Number of unique certs: {1}. Number of duplicates: {2} ".format(
         num_rsa_keys, len(unique_keys), len(duplicate_keys)))
-    print("Certificates with no common names: ", num_certs_with_no_common_name)
+    # print("Certificates with no common names: ", num_certs_with_no_common_name)
     print("Number of keys per group, assuming taking the most likely group per key:")
     print(num_keys_in_each_group)
 
-    # with open('issuers.txt', 'w') as file:
-    #     for key in sorted(dict_common_name, key=dict_common_name.get, reverse=True):
-    #         file.write("{0}: {1}\n".format(key, dict_common_name[key]))
-    #
-    # with open('org.txt', 'w') as file:
-    #     for key in sorted(dict_org, key=dict_org.get, reverse=True):
-    #         file.write("{0}: {1}\n".format(key, dict_org[key]))
+    num_certs_with_duplicate_keys = write_duplicate_keys(key_to_certificate_dict)
 
-    # dumping certs_with_key to file
-    # with open('certs_with_key.pickle', 'wb') as handle:
-    #     pickle.dump(certs_with_key, handle, protocol=pickle.HIGHEST_PROTOCOL)
-
-    certs_with_dup_keys = write_duplicate_keys(key_to_certificate_dict)
-
-    print("Certs with dup keys: ", certs_with_dup_keys)
-    print(groups)
+    print("Certs with dup keys: ", num_certs_with_duplicate_keys)
+    # print(groups)
 
     changed_subject_dict, validity_overlap_dict, num_changed_subjects, num_overlap_validity = find_certificate_company_changes(
         key_to_certificate_dict)
 
     print("Found {0} changed issuers and {1} overlapping validity instances".format(num_changed_subjects,
                                                                                     num_overlap_validity))
+
+    overlap_times = overlap_time_dict_to_timedelta_list(validity_overlap_dict)
+
+    pyplot.hist(overlap_times)
+    pyplot.show()
+    print("DONE")
 
 
 def find_certificate_company_changes(key_to_certificate_dict):
@@ -79,8 +79,8 @@ def find_certificate_company_changes(key_to_certificate_dict):
                 assert isinstance(cert_b, x509.Certificate)
 
                 # check if company has changed
-                companies_are_different, difference_list = are_certs_from_same_company(cert_a, cert_b)
-                if companies_are_different:
+                companies_are_same, difference_list = are_certs_from_same_company(cert_a, cert_b)
+                if not companies_are_same:
                     changes_list.append((cert_a, cert_b, difference_list))
                     num_changed_subjects += 1
 
@@ -100,13 +100,14 @@ def find_certificate_company_changes(key_to_certificate_dict):
     with open('validity_overlap.txt', 'w') as out_file:
         for key in validity_overlap_dict:
             for cert_a, cert_b, overlap in validity_overlap_dict[key]:
-                out_file.write("{0}-{1}: {2}\n".format(cert_a.serial, cert_b.serial, overlap))
+                out_file.write("{0}-{1}: {2}\n".format(cert_a.serial_number, cert_b.serial_number, overlap))
 
     with open('changed_subjects.txt', 'wb') as out_file:
         for key in changed_subject_dict:
             for cert_a, cert_b, changes in changed_subject_dict[key]:
                 try:
-                    out_file.write("{0}-{1}: {2}\n".format(cert_a.serial, cert_b.serial, changes).encode('utf-8'))
+                    out_file.write(
+                        "{0}-{1}: {2}\n".format(cert_a.serial_number, cert_b.serial_number, changes).encode('utf-8'))
                 except UnicodeEncodeError:
                     out_file.write("{0}-{1}: ERROR. Changes has non-valid character".encode('utf-8'))
 
@@ -132,6 +133,16 @@ def write_duplicate_keys(key_to_certificate_dict):
                         file.write(", ".encode('utf-8'))
                 file.write("\n".encode('utf-8'))
     return certs_with_dup_keys
+
+
+def overlap_time_dict_to_timedelta_list(valid_overlap_dict) -> List[timedelta]:
+    overlap_timedeltas = list()
+    for key in valid_overlap_dict:
+        for _, _, overlap in valid_overlap_dict[key]:
+            assert isinstance(overlap, timedelta)
+            overlap_timedeltas.append(overlap.days)
+
+    return overlap_timedeltas
 
 
 if __name__ == "__main__":
