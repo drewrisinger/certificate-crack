@@ -134,6 +134,46 @@ def gen_pem_files_list(data_directory):
     return pem_files_list
 
 
+def count_common_names(certificate_list: List[x509.Certificate]):
+    num_certs_with_no_common_name = 0
+    dict_common_name = dict()
+    for certificate in certificate_list:
+        common_name_attr = certificate.issuer.get_attributes_for_oid(NameOID.COMMON_NAME)
+        if common_name_attr:
+            if common_name_attr.value in dict_common_name:
+                dict_common_name[common_name_attr.value] += 1
+            else:
+                dict_common_name[common_name_attr.value] = 1
+        else:
+            num_certs_with_no_common_name += 1
+
+    with open('issuers.txt', 'w') as file:
+        for key in sorted(dict_common_name, key=dict_common_name.get, reverse=True):
+            file.write("{0}: {1}\n".format(key, dict_common_name[key]))
+
+    return dict_common_name, num_certs_with_no_common_name
+
+
+def count_organization_names(certificate_list: List[x509.Certificate]):
+    num_certs_with_no_org_name = 0
+    dict_org = dict()
+    for certificate in certificate_list:
+        common_name_attr = certificate.issuer.get_attributes_for_oid(NameOID.ORGANIZATION_NAME)
+        if common_name_attr:
+            if common_name_attr.value in dict_org:
+                dict_org[common_name_attr.value] += 1
+            else:
+                dict_org[common_name_attr.value] = 1
+        else:
+            num_certs_with_no_org_name += 1
+
+    with open('org.txt', 'w') as file:
+        for key in sorted(dict_org, key=dict_org.get, reverse=True):
+            file.write("{0}: {1}\n".format(key, dict_org[key]))
+
+    return dict_org, num_certs_with_no_org_name
+
+
 def create_key_to_cert_list(pem_certs, mask_prob_dict, groups):
     num_rsa_keys = 0
     num_dsa_keys = 0
@@ -141,27 +181,9 @@ def create_key_to_cert_list(pem_certs, mask_prob_dict, groups):
     seen_keys = set()
     duplicate_keys = []
     unique_keys = []
-    # dict_common_name = dict()
-    # dict_org = dict()
-    num_certs_with_no_common_name = 0
-    # num_certs_with_no_org_name = 0
-    dict_common_name = dict()
-    dict_org = dict()
-    num_certs_with_no_common_name = 0
-    num_certs_with_no_org_name = 0
     key_to_certificate_dict = dict()  # dictionary linking between a public key modulus & the certificate object
     for certificate in pem_certs:
         pub_key = certificate.public_key()
-        # retrieve common name(issuer) for certs
-        if certificate.issuer.get_attributes_for_oid(NameOID.COMMON_NAME):
-            attribute_count(dict_common_name, certificate, "COMMON_NAME")
-        else:
-            num_certs_with_no_common_name += 1
-
-        if certificate.issuer.get_attributes_for_oid(NameOID.ORGANIZATION_NAME):
-            attribute_count(dict_org, certificate, "ORGANIZATION_NAME")
-        else:
-            num_certs_with_no_org_name += 1
 
         # count num of RSA and DSA keys
         if isinstance(pub_key, DSAPublicKey):
@@ -186,5 +208,4 @@ def create_key_to_cert_list(pem_certs, mask_prob_dict, groups):
             # ))
         else:
             raise ValueError
-    return key_to_certificate_dict, num_rsa_keys, num_dsa_keys, unique_keys, duplicate_keys, \
-           num_certs_with_no_common_name, num_keys_in_each_group
+    return key_to_certificate_dict, num_rsa_keys, num_dsa_keys, unique_keys, duplicate_keys, num_keys_in_each_group
