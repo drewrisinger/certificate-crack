@@ -37,9 +37,9 @@ def certificate_validity_overlap(certificate_a: x509.Certificate, certificate_b:
         return False, timedelta(0)
 
 
-def same_issuer(certificate_a: x509.Certificate, certificate_b: x509.Certificate) -> bool:
+def are_certs_from_same_company(certificate_a: x509.Certificate, certificate_b: x509.Certificate) -> bool:
     """
-    Compares issuers to see if they are the same. Checks all attributes except serial number.
+    Compares companies certs are assigned to see if they are the same. Checks all attributes except serial number.
     :param certificate_a: an x509 certificate
     :param certificate_b: a second x509 certificate
     :return: boolean
@@ -47,12 +47,12 @@ def same_issuer(certificate_a: x509.Certificate, certificate_b: x509.Certificate
     assert isinstance(certificate_b, x509.Certificate)
     assert isinstance(certificate_a, x509.Certificate)
 
-    issuer_a_rdns_list = certificate_a.issuer.rdns
-    issuer_b_rdns_list = certificate_b.issuer.rdns
+    subject_a_rdns_list = certificate_a.subject.rdns
+    subject_b_rdns_list = certificate_b.subject.rdns
 
-    for rdns_a in issuer_a_rdns_list:
+    for rdns_a in subject_a_rdns_list:
         for name_attr_a in rdns_a:
-            for rdns_b in issuer_b_rdns_list:
+            for rdns_b in subject_b_rdns_list:
                 for name_attr_b in rdns_b:
                     assert isinstance(name_attr_a, x509.NameAttribute)
                     assert isinstance(name_attr_b, x509.NameAttribute)
@@ -72,9 +72,9 @@ def get_certificates_different_attributes(certificate_a: x509.Certificate, certi
     :return:
     """
     ret_list = list()
-    for rdns_a in certificate_a.issuer.rdns:
+    for rdns_a in certificate_a.subject.rdns:
         for name_attr_a in rdns_a:
-            for rdns_b in certificate_b.issuer.rdns:
+            for rdns_b in certificate_b.subject.rdns:
                 for name_attr_b in rdns_b:
                     assert isinstance(name_attr_a, x509.NameAttribute)
                     assert isinstance(name_attr_b, x509.NameAttribute)
@@ -239,9 +239,9 @@ def main():
     print("Certs with dup keys: ", certs_with_dup_keys)
     print(groups)
 
-    changed_issuer_dict = dict()
+    changed_subject_dict = dict()
     validity_overlap_dict = dict()
-    num_changed_issuers = 0
+    num_changed_subjects = 0
     num_overlap_validity = 0
     for pub_mod in key_to_certificate_dict:
         if len(key_to_certificate_dict[pub_mod]) > 1:
@@ -251,12 +251,12 @@ def main():
             for cert_a, cert_b in combinations(current_cert_list, 2):
                 assert isinstance(cert_a, x509.Certificate)
                 assert isinstance(cert_b, x509.Certificate)
-                # for n in NameOID:
-                # check if issuer has changed
-                if not same_issuer(cert_a, cert_b):
+
+                # check if company has changed
+                if not are_certs_from_same_company(cert_a, cert_b):
                     different_attributes = get_certificates_different_attributes(cert_a, cert_b)
                     changes_list.append((cert_a, cert_b, different_attributes))
-                    num_changed_issuers += 1
+                    num_changed_subjects += 1
 
                 # check if overlap between validity dates of certificates
                 is_overlap, overlap_time = certificate_validity_overlap(cert_a, cert_b)
@@ -265,12 +265,26 @@ def main():
                     num_overlap_validity += 1
 
             if len(changes_list) > 0:
-                changed_issuer_dict[pub_mod] = changes_list
+                changed_subject_dict[pub_mod] = changes_list
 
             if len(validity_list) > 0:
                 validity_overlap_dict[pub_mod] = validity_list
 
-    print("Found {0} changed issuers and {1} overlapping validity instances".format(num_changed_issuers,
+    # print out validity overlap dict & changed companies dict
+    with open('validity_overlap.txt', 'w') as out_file:
+        for key in validity_overlap_dict:
+            for cert_a, cert_b, overlap in validity_overlap_dict[key]:
+                out_file.write("{0}-{1}: {2}\n".format(cert_a.serial, cert_b.serial, overlap))
+
+    with open('changed_subjects.txt', 'w') as out_file:
+        for key in changed_subject_dict:
+            for cert_a, cert_b, changes in changed_subject_dict[key]:
+                try:
+                    out_file.write(u"{0}-{1}: {2}\n".format(cert_a.serial, cert_b.serial, changes))
+                except UnicodeEncodeError:
+                    out_file.write(u"{0}-{1}: ERROR. Changes has non-valid character")
+
+    print("Found {0} changed issuers and {1} overlapping validity instances".format(num_changed_subjects,
                                                                                     num_overlap_validity))
 
 

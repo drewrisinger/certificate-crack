@@ -2,7 +2,7 @@
 
 ## Statistics
 - Issuers
-    - Gather data on who the top 10-15 issuers were
+    - Gather data on who the top 10-15 issuers (AND COMPANIES) were
     - Create graph
 - Duplicate Keys
     - Who are the issuers
