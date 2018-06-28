@@ -110,3 +110,6 @@ fingerprinting.ipynb
 changed_subjects.txt
 dupes.txt
 validity_overlap.txt
+vulnerable_moduli_all_keys_not_parallel_without_repeats
+*.moduli
+test.ipynb

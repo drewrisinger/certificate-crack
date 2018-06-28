@@ -9,7 +9,7 @@ from cryptography.x509.oid import NameOID
 
 import fingerprint
 from certificate_analysis import certificate_validity_overlap, are_certs_from_same_company, \
-    get_certs_from_list, gen_pem_files_list, create_key_to_cert_list
+    get_certs_from_list, gen_pem_files_list, create_key_to_cert_list, get_keys_and_duplicates
 
 """
 This program tries to analyse the certificates and gather useful data
@@ -27,17 +27,23 @@ This program tries to analyse the certificates and gather useful data
 
 
 def main():
-    DATA_DIRECTORY = 'C:/Users/drewr/Documents/Graduate_Files/Classes/ENEE657/leaf_cert/'
-    # DATA_DIRECTORY = '../leaf_cert/'
+    # DATA_DIRECTORY = 'C:/Users/drewr/Documents/Graduate_Files/Classes/ENEE657/leaf_cert/'
+    DATA_DIRECTORY = '../leaf_cert/'
     fingerprint_filename = r"./classiftable_20160716.csv"  # from https://crocs.fi.muni.cz/public/papers/usenix2016
     mask_prob_dict, groups = fingerprint.read_fingerprint_table(fingerprint_filename)
     pem_files_list = gen_pem_files_list(DATA_DIRECTORY)
     pem_certs = get_certs_from_list(pem_files_list)
-    key_to_certificate_dict, num_rsa_keys, num_dsa_keys, unique_keys, duplicate_keys, num_keys_in_each_group = create_key_to_cert_list(
+    # key_to_certificate_dict, num_rsa_keys, num_dsa_keys, unique_keys, duplicate_keys, num_keys_in_each_group = create_key_to_cert_list(
+    #     pem_certs, mask_prob_dict, groups)
+    key_to_certificate_dict, duplicate_key_dict, num_dup_certs = get_keys_and_duplicates(
         pem_certs, mask_prob_dict, groups)
-
     # dict_org, num_certs_with_no_org_name = count_organization_names(pem_certs)
     # dict_common_name, num_certs_with_no_common_name = count_common_names(pem_certs)
+
+    problem_mod_cert_dict = dict()
+    for k in duplicate_key_dict:
+        if len(duplicate_key_dict[k]) > 5:
+            problem_mod_cert_dict[k] = duplicate_key_dict[k]
 
     print("Total number of certificates: {0}. ".format(len(pem_certs)))
     print("Number of DSA certs = {0}".format(num_dsa_keys))
@@ -49,7 +55,7 @@ def main():
 
     num_certs_with_duplicate_keys = write_duplicate_keys(key_to_certificate_dict)
 
-    print("Certs with dup keys: ", num_certs_with_duplicate_keys)
+    print("# of Duplicate keys: {}, Number of certificates with duplicate keys: {}".format(len(duplicate_keys), num_certs_with_duplicate_keys))
     # print(groups)
 
     changed_subject_dict, validity_overlap_dict, num_changed_subjects, num_overlap_validity = find_certificate_company_changes(
@@ -69,10 +75,10 @@ def main():
     plt.hist(overlap_times, bins=bin_spacing)
     plt.xlabel('Time (seconds) of certificate overlap (log)')
     plt.ylabel('Number of overlapping elements')
-    plt.title('Histogram of duplicate certificate validity overlap')
+    plt.title('Histogram of duplicate certificate validity overlap (n={})'.format(len(overlap_times)))
     plt.gca().set_xscale("log")
     plt.text(10 ** 3, 1300, r'$\mu={0:.2f}\ days,\ \sigma={1:.2f}\ days$'.format(overlap_mean * seconds_to_days,
-                                                                                 overlap_std * seconds_to_days))
+                                                                                        overlap_std * seconds_to_days))
     plt.show()
 
     min_overlap_days, max_overlap_days = min(overlap_times_days), max(overlap_times_days)
@@ -82,7 +88,7 @@ def main():
     plt.hist(overlap_times_days, bins=20)
     plt.xlabel('Time (days) of certificate overlap')
     plt.ylabel('Number of overlapping elements')
-    plt.title('Histogram of duplicate certificate validity overlap')
+    plt.title('Histogram of duplicate certificate validity overlap (n={})'.format(len(overlap_times_days)))
     plt.text(600, 1200, r'$\mu={0:.2f}\ days,\ \sigma={1:.2f}\ days$'.format(overlap_days_mean, overlap_days_std))
     plt.show()
 
@@ -94,6 +100,7 @@ def find_certificate_company_changes(key_to_certificate_dict, exclude_same_day=T
     validity_overlap_dict = dict()
     num_changed_subjects = 0
     num_overlap_validity = 0
+    num_changed_locality_only = 0
     for pub_mod in key_to_certificate_dict:
         if len(key_to_certificate_dict[pub_mod]) > 1:
             current_cert_list = key_to_certificate_dict[pub_mod]
@@ -107,6 +114,8 @@ def find_certificate_company_changes(key_to_certificate_dict, exclude_same_day=T
                 companies_are_same, difference_list = are_certs_from_same_company(cert_a, cert_b)
                 if not companies_are_same:
                     changes_list.append((cert_a, cert_b, difference_list))
+                    if len(difference_list) == 1 and difference_list[0][0].oid == NameOID.LOCALITY_NAME:
+                        num_changed_locality_only += 1
                     num_changed_subjects += 1
 
                 # check if overlap between validity dates of certificates
@@ -122,6 +131,22 @@ def find_certificate_company_changes(key_to_certificate_dict, exclude_same_day=T
             if len(validity_list) > 0:
                 validity_overlap_dict[pub_mod] = validity_list
 
+    small_overlap_dict = dict()
+    for key in validity_overlap_dict:
+        if len(validity_overlap_dict[key]) < 50:
+            small_overlap_dict[key] = validity_overlap_dict[key]
+
+    few_certificates_overlap = overlap_time_dict_to_timedelta_list(small_overlap_dict)
+    overlap_days_std = np.std(few_certificates_overlap)
+    overlap_days_mean = np.mean(few_certificates_overlap)
+    # bin_spacing = np.logspace(np.log10(min_overlap_days), np.log10(max_overlap_days), num=15)
+    plt.hist(few_certificates_overlap, bins=20)
+    plt.xlabel('Time (days) of certificate overlap')
+    plt.ylabel('Number of overlapping elements')
+    plt.title('Histogram of duplicate certificate validity overlap\nExcludes shared keys(n={})'.format(len(few_certificates_overlap)))
+    plt.text(400, 800, r'$\mu={0:.2f}\ days,\ \sigma={1:.2f}\ days$'.format(overlap_days_mean, overlap_days_std))
+    plt.show()
+
     # print out validity overlap dict & changed companies dict
     with open('validity_overlap.txt', 'w') as out_file:
         for key in validity_overlap_dict:
@@ -130,6 +155,8 @@ def find_certificate_company_changes(key_to_certificate_dict, exclude_same_day=T
 
     with open('changed_subjects.txt', 'wb') as out_file:
         for key in changed_subject_dict:
+            cert_a, _, _ = changed_subject_dict[key][0]
+            out_file.write("\n{0} differences for public key {1:x}\n".format(len(changed_subject_dict[key]), key).encode('utf-8'))
             for cert_a, cert_b, changes in changed_subject_dict[key]:
                 try:
                     out_file.write("{0}-{1}: ".format(cert_a.serial_number, cert_b.serial_number).encode('utf-8'))
@@ -154,7 +181,7 @@ def write_duplicate_keys(key_to_certificate_dict):
     with open('dupes.txt', 'wb') as file:
         for pub_mod in key_to_certificate_dict:
             if len(key_to_certificate_dict[pub_mod]) > 1:
-                certs_with_dup_keys += len(key_to_certificate_dict[pub_mod]) - 1
+                certs_with_dup_keys += len(key_to_certificate_dict[pub_mod])
                 for i in range(len(key_to_certificate_dict[pub_mod])):
                     try:
                         file.write(

@@ -232,3 +232,45 @@ def create_key_to_cert_list(pem_certs, mask_prob_dict, groups):
         else:
             raise ValueError
     return key_to_certificate_dict, num_rsa_keys, num_dsa_keys, unique_keys, duplicate_keys, num_keys_in_each_group
+
+
+def get_keys_and_duplicates(pem_certs, mask_prob_dict, groups):
+    num_rsa_keys = 0
+    num_dsa_keys = 0
+    num_keys_in_each_group = [0] * len(groups)
+    seen_keys = set()
+    duplicate_keys = dict()
+    unique_keys = []
+    key_to_certificate_dict = dict()  # dictionary linking between a public key modulus & the certificate object
+    total_duplicate_certs = 0
+    for certificate in pem_certs:
+        pub_key = certificate.public_key()
+
+        # count num of RSA and DSA keys
+        if isinstance(pub_key, DSAPublicKey):
+            num_dsa_keys = num_dsa_keys + 1
+        elif isinstance(pub_key, RSAPublicKey):
+            num_rsa_keys = num_rsa_keys + 1
+            pub_mod = pub_key.public_numbers().n
+            if pub_mod not in seen_keys:
+                seen_keys.add(pub_mod)
+                unique_keys.append(certificate)
+                key_to_certificate_dict[pub_mod] = [certificate]
+            else:
+                if pub_mod not in duplicate_keys:
+                    duplicate_keys[pub_mod] = [key_to_certificate_dict[pub_mod]]
+                    total_duplicate_certs += 1
+                duplicate_keys[pub_mod].append(certificate)
+                total_duplicate_certs += 1
+                key_to_certificate_dict[pub_mod].append(certificate)
+            # todo: Maybe record probability and then normalize at end by number of keys?
+            num_keys_in_each_group[
+                groups.index(fingerprint.get_likely_group_from_key(pub_mod, mask_prob_dict, groups))] += 1
+            # if fingerprint.classify_key(pub_mod, mask_prob_dict, groups)[3] == 100:
+            # print(pub_key.public_bytes(
+            #     encoding=serialization.Encoding.PEM,
+            #     format=serialization.PublicFormat.SubjectPublicKeyInfo
+            # ))
+        else:
+            raise ValueError
+    return key_to_certificate_dict, duplicate_keys, total_duplicate_certs
